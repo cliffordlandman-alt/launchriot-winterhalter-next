@@ -78,7 +78,7 @@ const gate=()=>!S.authed?`<div class="notice">You are not signed in, so live dat
 // ---- views ----
 function vOverview(){const p=prio(),mt=meetToday(),nd=needsDecision(),T=top3();
  const live=S.authed&&S.loaded,n=v=>live?v:'–';
- return `<h1>${greet()}, Gareth.</h1><p class="sub">${esc(new Intl.DateTimeFormat('en-GB',{timeZone:TZ,weekday:'long',day:'numeric',month:'long'}).format(new Date()))} · Dubai time${S.syncedAt?' · last mail sync '+esc(ago(S.syncedAt)):''}</p>${gate()}
+ return `<h1>${greet()}, ${window.WN_NAME||'Gareth'}.</h1><p class="sub">${esc(new Intl.DateTimeFormat('en-GB',{timeZone:TZ,weekday:'long',day:'numeric',month:'long'}).format(new Date()))} · Dubai time${S.syncedAt?' · last mail sync '+esc(ago(S.syncedAt)):''}</p>${gate()}
 <div class="tiles"><a class="tile" href="#/brief"><b>${n(nd.length)}</b><span>Needs decision</span><small>Open decisions and drafts</small></a><a class="tile" href="#/brief"><b>${n(p.length)}</b><span>Priority messages</span><small>High priority or needs reply</small></a><a class="tile" href="#/brief"><b>${n(mt.length)}</b><span>Meetings today</span><small>From your calendar</small></a></div>
 <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Your attention today</h2><a href="#/focus" class="btn alt sm" style="text-decoration:none">Focus mode</a></div>${T.length?T.map((x,i)=>`<div class="item"><div class="t">${i+1}. ${esc(x.t)}</div><div class="why"><b>Why:</b> ${esc(x.why)}</div></div>`).join(''):'<div class="empty">Nothing needs your attention based on connected data and your captured tasks.</div>'}</div>
 <div class="card arthur"><h2>Ask Arthur</h2><p class="sub" style="margin-bottom:12px">Rule-based helper. Not an AI model.</p><a class="btn alt" style="text-decoration:none" href="#/arthur">Open Arthur</a></div>`}
@@ -110,7 +110,7 @@ function render(){const t=(location.hash.replace(/^#\/?/,'').split('/')[0])||'ov
  $('#who').innerHTML=S.authed?`Signed in${S.user?' · '+esc(S.user):''}`:`<button class="btn alt sm" data-act="login">Sign in</button>`;
  $('#main').innerHTML=v[2]()}
 function login(note){if($('#lg'))return;const d=document.createElement('div');d.className='modal';d.id='lg';
- d.innerHTML=`<form role="dialog" aria-label="Sign in"><img src="winterhalter-logo.png" alt="Winterhalter" style="height:44px"><h2 style="margin-top:12px">Sign in</h2><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label><p id="lerr" class="sm" style="color:#b00;min-height:18px">${esc(note||'')}</p><div class="row"><button class="btn">Sign in</button><button type="button" class="btn alt" id="lx">Not now</button></div></form>`;
+ d.innerHTML=`<form role="dialog" aria-label="Sign in"><img src="winterhalter-logo.png" alt="Winterhalter" style="height:44px"><h2 style="margin-top:12px">Sign in</h2><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label><p id="lerr" class="sm" style="color:#b00;min-height:18px">${esc(note||'')}</p><div class="row"><button class="btn">Sign in</button><button type="button" class="btn alt" id="lx">Not now</button></div><p class="sm" style="margin:12px 0 0"><a href="?demo=1" id="ltd">Try the demo instead (no login)</a></p></form>`;
  document.body.appendChild(d);d.querySelector('input').focus();d.querySelector('#lx').onclick=()=>d.remove();
  d.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target,er=d.querySelector('#lerr');er.textContent='Signing in…';
   try{await api('/auth/login',{method:'POST',body:JSON.stringify({email:f.email.value.trim(),password:f.password.value})});const me=await api('/auth/me').catch(()=>null);S.user=me&&me.user&&me.user.email||'';d.remove();await load()}
@@ -132,7 +132,7 @@ document.addEventListener('keydown',e=>{if(e.key=='Escape'){document.querySelect
 addEventListener('hashchange',()=>{render();$('#main').focus({preventScroll:true});scrollTo(0,0)});
 function start(){render();(async()=>{try{const me=await api('/auth/me');S.user=me&&me.user&&me.user.email||''}catch(e){}await load();if(!S.authed&&S.online&&!sessionStorage.getItem('wn-asked')){sessionStorage.setItem('wn-asked','1');login()}})();}
 setInterval(()=>{if(S.authed)load()},5*60*1000);
-if(document.readyState=='loading')addEventListener('DOMContentLoaded',start);else start();
+(window.WN_READY||Promise.resolve()).then(()=>{if(document.readyState=='loading')addEventListener('DOMContentLoaded',start);else start()});
 // ---- extension API for feature modules (decisions.js, staff.js, ...) ----
 window.WN={nextMeeting,relatedTo,meetToday,meetWeek,loadCap,S,api,esc,fmt,dl,tm,dkey,todayK,days,ago,toast,render,load,gate,sec,safeUrl,mailLink,why,arr,TZ,
  view(id,label,fn,before){const i=before?NAV.findIndex(n=>n[0]==before):-1;const e=[id,label,fn];if(i<0)NAV.push(e);else NAV.splice(i,0,e)},
