@@ -3,7 +3,7 @@
 const API_BASE='https://api-gareth.145-241-118-107.sslip.io',TZ='Asia/Dubai',DAY=864e5,LS='wnext-capture-v1';
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=s=>document.querySelector(s);
-const S={authed:false,online:true,loaded:false,err:'',conn:[],mail:[],cal:[],staff:[],drafts:[],user:null,syncedAt:null,ans:null};
+const HOOKS=[];const S={authed:false,online:true,loaded:false,err:'',conn:[],mail:[],cal:[],staff:[],drafts:[],user:null,syncedAt:null,ans:null};
 const arr=x=>Array.isArray(x)?x:(x&&(x.items||x.data||x.connections))||[];
 async function api(p,o){o=o||{};const r=await fetch(API_BASE+p,{...o,credentials:'include',headers:o.body?{'Content-Type':'application/json'}:{}});
  const ct=r.headers.get('content-type')||'',b=ct.includes('json')?await r.json().catch(()=>null):null;const e=new Error('HTTP '+r.status);e.status=r.status;
@@ -40,10 +40,11 @@ async function load(){S.err='';try{
  S.cal=cals.flatMap(b=>arr(b)).map(e=>({id:e.id,title:e.title||'(no title)',at:e.starts_at,end:e.ends_at||'',loc:e.location||'',url:safeUrl(e.meeting_url||'')})).filter(e=>e.at).sort((a,b)=>new Date(a.at)-new Date(b.at));
  S.staff=arr(op).map(mapStaff);
  S.drafts=arr(dr).filter(d=>!['approved','approved_held','declined'].includes(d.status)).map(d=>({id:d.id,subj:d.subject||'Draft',body:String(d.body||'').slice(0,200),type:d.type||''}));
+ await Promise.all(HOOKS.map(h=>h(soft)));
  S.syncedAt=con.map(c=>c.last_sync).filter(Boolean).sort().pop()||null;S.loaded=true;S.online=true;
 }catch(e){if(e.status==401){S.authed=false;S.loaded=false}else{S.online=false;S.err='Cannot reach the server from this browser.'}}
 
- const f=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#main #capform');if(!f)render()}
+ const f=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#main')&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);if(!f)render()}
 // ---- derived ----
 const prio=()=>S.mail.filter(isPriority).sort((a,b)=>b.imp-a.imp||new Date(b.at)-new Date(a.at));
 const meetToday=()=>S.cal.filter(e=>dkey(e.at)==todayK());
@@ -120,6 +121,13 @@ document.addEventListener('submit',e=>{if(e.target.id=='capform'){e.preventDefau
 function qc(){if($('#qcm'))return;const d=document.createElement('div');d.className='modal';d.id='qcm';d.innerHTML=`<div class="box" role="dialog" aria-label="Quick capture"><h2>Quick capture</h2><p class="mut sm">Stored on this device only.</p>${capForm().replace('class="card"','')}<button class="btn alt" id="qx" style="margin-top:10px">Cancel</button></div>`;document.body.appendChild(d);d.querySelector('textarea').focus();d.querySelector('#qx').onclick=()=>d.remove();d.addEventListener('click',e=>{if(e.target==d)d.remove()})}
 document.addEventListener('keydown',e=>{if(e.key=='Escape'){document.querySelectorAll('.modal').forEach(m=>m.remove())}});
 addEventListener('hashchange',()=>{render();$('#main').focus({preventScroll:true});scrollTo(0,0)});
-render();(async()=>{try{const me=await api('/auth/me');S.user=me&&me.user&&me.user.email||''}catch(e){}await load();if(!S.authed&&S.online&&!sessionStorage.getItem('wn-asked')){sessionStorage.setItem('wn-asked','1');login()}})();
+function start(){render();(async()=>{try{const me=await api('/auth/me');S.user=me&&me.user&&me.user.email||''}catch(e){}await load();if(!S.authed&&S.online&&!sessionStorage.getItem('wn-asked')){sessionStorage.setItem('wn-asked','1');login()}})();}
 setInterval(()=>{if(S.authed)load()},5*60*1000);
+if(document.readyState=='loading')addEventListener('DOMContentLoaded',start);else start();
+// ---- extension API for feature modules (decisions.js, staff.js, ...) ----
+window.WN={S,api,esc,fmt,dl,tm,dkey,todayK,days,ago,toast,render,load,gate,sec,safeUrl,mailLink,why,arr,TZ,
+ view(id,label,fn,before){const i=before?NAV.findIndex(n=>n[0]==before):-1;const e=[id,label,fn];if(i<0)NAV.push(e);else NAV.splice(i,0,e)},
+ onLoad(h){HOOKS.push(h)},
+ modal(html,label){const d=document.createElement('div');d.className='modal';d.innerHTML='<div class="box" role="dialog" aria-label="'+esc(label)+'">'+html+'</div>';document.body.appendChild(d);d.addEventListener('click',e=>{if(e.target==d)d.remove()});const f=d.querySelector('input,textarea,select');f&&f.focus();return d},
+ needAuth(){return S.authed?'':'<div class="notice">Sign in to use this section. <button class="btn sm" data-act="login">Sign in</button></div>'}};
 })();
