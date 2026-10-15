@@ -49,7 +49,7 @@ async function load(){S.err='';try{
 const prio=()=>S.mail.filter(isPriority).sort((a,b)=>b.imp-a.imp||new Date(b.at)-new Date(a.at));
 const meetToday=()=>S.cal.filter(e=>dkey(e.at)==todayK());
 const meetWeek=()=>{const t=Date.now()-36e5,e=Date.now()+7*DAY;return S.cal.filter(x=>{const v=+new Date(x.at);return v>=t&&v<=e})};
-const needsDecision=()=>S.drafts;
+const needsDecision=()=>S.drafts.concat((S.decisions||[]).filter(d=>d.status!='decided').map(d=>({id:d.id,subj:d.title,body:d.context||'Decision pending',type:'decision'})));
 const connected=()=>S.conn.some(c=>c.state=='connected');
 function nextMeeting(){return S.cal.find(e=>new Date(e.end||e.at).getTime()>Date.now()-9e5&&dkey(e.at)>=todayK())}
 function relatedTo(ev){const w=(ev.title.toLowerCase().match(/[a-z0-9]{4,}/g)||[]).filter(x=>!['meeting','call','with','sync','weekly','review','catch'].includes(x));if(!w.length)return{mail:[],notes:[]};
@@ -59,14 +59,14 @@ function relatedTo(ev){const w=(ev.title.toLowerCase().match(/[a-z0-9]{4,}/g)||[
 function top3(){const c=[];const tk=todayK();
  meetToday().filter(e=>new Date(e.end||e.at)>new Date()).slice(0,2).forEach((e,i)=>c.push({s:90-i,t:e.title,why:'Meeting today at '+tm(e.at)+' (calendar)',kind:'Meeting'}));
  loadCap().filter(x=>!x.done&&x.type=='task'&&x.due&&x.due<=tk).forEach(x=>c.push({s:x.due<tk?95:85,t:x.text,why:(x.due<tk?'Overdue since ':'Due today: ')+x.due+' (your captured task)',kind:'Task'}));
- needsDecision().slice(0,2).forEach(d=>c.push({s:80,t:d.subj,why:'Draft waiting for your decision',kind:'Decision'}));
+ needsDecision().slice(0,2).forEach(d=>c.push({s:80,t:d.subj,why:d.type=='decision'?'Open decision in your register':'Draft waiting for your decision',kind:'Decision'}));
  prio().slice(0,3).forEach(m=>c.push({s:50+Math.min(m.imp,30),t:m.subj+' · '+m.from,why:why(m),kind:'Message',link:mailLink(m)}));
  return c.sort((a,b)=>b.s-a.s).slice(0,3)}
 // ---- html helpers ----
 const msgItem=m=>`<div class="item"><div class="t">${esc(m.subj)}</div><div class="mut sm">${esc(m.from)} · ${esc(dl(m.at))} ${esc(tm(m.at))}</div><div class="why"><b>Why flagged:</b> ${esc(why(m))}</div>${mailLink(m)?`<a href="${esc(mailLink(m))}" target="_blank" rel="noopener noreferrer">Open in Gmail ↗</a>`:`<span class="mut sm">Source: ${esc(m.src)}</span>`}</div>`;
 const calItem=e=>`<div class="item"><div class="t">${esc(tm(e.at))}${e.end?'–'+esc(tm(e.end)):''} · ${esc(e.title)}</div><div class="mut sm">${esc(dl(e.at))} (Dubai time)${e.loc?' · '+esc(e.loc):''}</div>${e.url?`<a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">Join link ↗</a>`:''}<div class="why"><b>Source:</b> calendar</div></div>`;
 const staffItem=s=>`<div class="item"><div class="t">${esc(s.subj)}</div><div class="mut sm">${esc(s.who)} · open ${days(s.at)} d</div><div class="why"><b>Why shown:</b> staff member copied on a thread that has no reply yet</div>${s.src=='gmail'&&s.thread?`<a href="https://mail.google.com/mail/u/0/#all/${encodeURIComponent(s.thread)}" target="_blank" rel="noopener noreferrer">Open in Gmail ↗</a>`:''}</div>`;
-const draftItem=d=>`<div class="item"><div class="t">${esc(d.subj)}</div><div class="mut sm">${esc(d.body)}</div><div class="why"><b>Why shown:</b> draft is pending; nothing is sent either way</div></div>`;
+const draftItem=d=>`<div class="item"><div class="t">${esc(d.subj)}</div><div class="mut sm">${esc(d.body)}</div><div class="why"><b>Why shown:</b> ${d.type=='decision'?'open decision in your register':'draft is pending; nothing is sent either way'}</div></div>`;
 const capItem=x=>`<div class="item row" style="justify-content:space-between;flex-wrap:nowrap"><label class="row" style="margin:0;color:var(--ink);gap:10px;flex:1;min-width:0"><input type="checkbox" data-cap-done="${esc(x.id)}" ${x.done?'checked':''} style="width:20px;height:20px;flex:none"><span class="${x.done?'done':''}" style="overflow-wrap:anywhere"><span class="pill">${esc(x.type)}</span>${esc(x.text)}${x.due?` <span class="mut sm">· due ${esc(x.due)}</span>`:''}</span></label><button class="btn alt sm" data-cap-del="${esc(x.id)}" aria-label="Delete ${esc(x.type)}">Delete</button></div>`;
 const sec=(t,items,empty)=>`<div class="card"><h2>${esc(t)}</h2>${items.length?items.join(''):`<div class="empty">${esc(empty)}</div>`}</div>`;
 const gate=()=>!S.authed?`<div class="notice">You are not signed in, so live data isn’t shown. <button class="btn sm" data-act="login">Sign in</button> Quick capture still works on this device.</div>`:!S.online?`<div class="notice">${esc(S.err)}</div>`:!connected()?`<div class="notice">No mail or calendar account is connected yet, so these sections are empty. Nothing is estimated or made up. See <a href="#/connections">Connections</a>.</div>`:S.err?`<div class="notice">${esc(S.err)}</div>`:'';
@@ -74,7 +74,7 @@ const gate=()=>!S.authed?`<div class="notice">You are not signed in, so live dat
 function vOverview(){const p=prio(),mt=meetToday(),nd=needsDecision(),T=top3();
  const live=S.authed&&S.loaded,n=v=>live?v:'–';
  return `<h1>${greet()}, Gareth.</h1><p class="sub">${esc(new Intl.DateTimeFormat('en-GB',{timeZone:TZ,weekday:'long',day:'numeric',month:'long'}).format(new Date()))} · Dubai time${S.syncedAt?' · last mail sync '+esc(ago(S.syncedAt)):''}</p>${gate()}
-<div class="tiles"><a class="tile" href="#/brief"><b>${n(nd.length)}</b><span>Needs decision</span><small>Drafts awaiting your OK</small></a><a class="tile" href="#/brief"><b>${n(p.length)}</b><span>Priority messages</span><small>High priority or needs reply</small></a><a class="tile" href="#/brief"><b>${n(mt.length)}</b><span>Meetings today</span><small>From your calendar</small></a></div>
+<div class="tiles"><a class="tile" href="#/brief"><b>${n(nd.length)}</b><span>Needs decision</span><small>Open decisions and drafts</small></a><a class="tile" href="#/brief"><b>${n(p.length)}</b><span>Priority messages</span><small>High priority or needs reply</small></a><a class="tile" href="#/brief"><b>${n(mt.length)}</b><span>Meetings today</span><small>From your calendar</small></a></div>
 <div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Your attention today</h2><a href="#/focus" class="btn alt sm" style="text-decoration:none">Focus mode</a></div>${T.length?T.map((x,i)=>`<div class="item"><div class="t">${i+1}. ${esc(x.t)}</div><div class="why"><b>Why:</b> ${esc(x.why)}</div></div>`).join(''):'<div class="empty">Nothing needs your attention based on connected data and your captured tasks.</div>'}</div>
 <div class="card arthur"><h2>Ask Arthur</h2><p class="sub" style="margin-bottom:12px">Rule-based helper. Not an AI model.</p><a class="btn alt" style="text-decoration:none" href="#/arthur">Open Arthur</a></div>`}
 function vBrief(){const p=prio().slice(0,6),mt=meetToday(),wk=meetWeek().filter(e=>dkey(e.at)!=todayK()),cap=loadCap().filter(x=>!x.done&&x.type=='task');
