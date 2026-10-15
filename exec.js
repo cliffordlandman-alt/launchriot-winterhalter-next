@@ -42,7 +42,8 @@ async function load(){S.err='';try{
  S.drafts=arr(dr).filter(d=>!['approved','approved_held','declined'].includes(d.status)).map(d=>({id:d.id,subj:d.subject||'Draft',body:String(d.body||'').slice(0,200),type:d.type||''}));
  S.syncedAt=con.map(c=>c.last_sync).filter(Boolean).sort().pop()||null;S.loaded=true;S.online=true;
 }catch(e){if(e.status==401){S.authed=false;S.loaded=false}else{S.online=false;S.err='Cannot reach the server from this browser.'}}
- render()}
+
+ const f=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#main #capform');if(!f)render()}
 // ---- derived ----
 const prio=()=>S.mail.filter(isPriority).sort((a,b)=>b.imp-a.imp||new Date(b.at)-new Date(a.at));
 const meetToday=()=>S.cal.filter(e=>dkey(e.at)==todayK());
@@ -87,7 +88,7 @@ function answer(k){const p=prio().slice(0,3),mt=meetToday(),nd=needsDecision();c
  if(!S.authed)return 'I can only read data after you sign in. <button class="btn sm" data-act="login">Sign in</button>';
  if(k=='prio'){const T=top3();return T.length?'These are the top items by my fixed rules (meetings, due tasks, decisions, then priority mail):'+li(T.map(x=>`<b>${esc(x.t)}</b><br><span class="mut sm">${esc(x.why)}</span>`)):'Nothing is flagged right now.'}
  if(k=='day'){const parts=[];parts.push(`<b>${mt.length}</b> meeting${mt.length==1?'':'s'} today`+(mt.length?': '+mt.slice(0,4).map(e=>esc(tm(e.at))+' '+esc(e.title)).join('; '):''));parts.push(`<b>${prio().length}</b> priority message${prio().length==1?'':'s'}`);parts.push(`<b>${nd.length}</b> draft${nd.length==1?'':'s'} awaiting your decision`);parts.push(`<b>${S.staff.length}</b> open staff task${S.staff.length==1?'':'s'}`);const d=loadCap().filter(x=>!x.done&&x.type=='task'&&x.due&&x.due<=todayK()).length;parts.push(`<b>${d}</b> captured task${d==1?'':'s'} due or overdue`);return 'Your day in numbers:'+li(parts)}
- if(k=='appr')return nd.length?`${nd.length} draft${nd.length==1?'':'s'} waiting. Approving only holds it; nothing is sent from here.`+li(nd.map(d=>`<b>${esc(d.subj)}</b><br><span class="mut sm">${esc(d.body)}</span>`)):'No drafts are waiting for a decision. The system has no other approval type yet.';
+ if(k=='appr')return nd.length?`${nd.length} draft${nd.length==1?'':'s'} waiting. This preview can’t approve them yet; nothing is sent from here.`+li(nd.map(d=>`<b>${esc(d.subj)}</b><br><span class="mut sm">${esc(d.body)}</span>`)):'No drafts are waiting for a decision. The system has no other approval type yet.';
  if(k=='meet'){const e=nextMeeting();if(!e)return 'No upcoming meeting found in your calendar.';const r=relatedTo(e);return `Next: <b>${esc(e.title)}</b> at ${esc(dl(e.at))} ${esc(tm(e.at))} (Dubai)${e.loc?' · '+esc(e.loc):''}.<br><span class="mut sm">Calendar data has no attendee list or agenda yet. Related items below are found by matching words in the title, so they may be incomplete.</span><div style="margin-top:8px"><b>Possibly related emails</b>${r.mail.length?'<ul>'+r.mail.map(m=>`<li>${esc(m.subj)} · ${esc(m.from)}</li>`).join('')+'</ul>':'<div class="mut sm">None found.</div>'}<b>Your notes that match</b>${r.notes.length?'<ul>'+r.notes.map(n=>`<li>${esc(n.text)}</li>`).join('')+'</ul>':'<div class="mut sm">None found.</div>'}</div>`}}
 function vArthur(){return `<h1>Ask Arthur</h1><p class="sub">Your assistant for the morning.</p><div class="notice"><b>Arthur is rule-based.</b> He reads the data on this page with fixed rules. He is not an AI model and cannot understand free text yet. He never sends anything.</div>${gate()}
 <div class="card arthur"><div class="row"><button class="btn alt" data-ask="prio">My priorities</button><button class="btn alt" data-ask="day">Prepare my day</button><button class="btn alt" data-ask="appr">Pending approvals</button><button class="btn alt" data-ask="meet">Prepare my meeting</button></div><div id="ans" aria-live="polite">${S.ans?`<div class="bubble">${S.ans}</div>`:'<div class="bubble mut">Choose a button above.</div>'}</div></div>`}
@@ -99,7 +100,6 @@ const NAV=[['overview','Overview',vOverview],['brief','Morning brief',vBrief],['
 function render(){const t=(location.hash.replace(/^#\/?/,'').split('/')[0])||'overview',v=NAV.find(n=>n[0]==t)||NAV[0];
  $('#nav').innerHTML=NAV.map(n=>`<a href="#/${n[0]}" class="${n[0]==v[0]?'on':''}" ${n[0]==v[0]?'aria-current="page"':''}>${esc(n[1])}</a>`).join('');
  $('#who').innerHTML=S.authed?`Signed in${S.user?' · '+esc(S.user):''}`:`<button class="btn alt sm" data-act="login">Sign in</button>`;
- const f=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('form');if(f&&f.id=='capform')return;
  $('#main').innerHTML=v[2]()}
 function login(note){if($('#lg'))return;const d=document.createElement('div');d.className='modal';d.id='lg';
  d.innerHTML=`<form role="dialog" aria-label="Sign in"><img src="winterhalter-logo.png" alt="Winterhalter" style="height:44px"><h2 style="margin-top:12px">Sign in</h2><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label><p id="lerr" class="sm" style="color:#b00;min-height:18px">${esc(note||'')}</p><div class="row"><button class="btn">Sign in</button><button type="button" class="btn alt" id="lx">Not now</button></div></form>`;
