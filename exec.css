@@ -50,3 +50,5 @@ label{display:block;font-size:13px;color:var(--mut);margin-bottom:10px}
 .tiles{grid-template-columns:1fr 1fr 1fr;gap:8px}.tile{padding:12px}.tile b{font-size:32px}.tile span{font-size:12px}.tile small{display:none}
 .grid2{grid-template-columns:1fr}main{padding:20px 14px 90px}.brand img{height:28px}}
 @media(max-width:380px){.tiles{grid-template-columns:1fr}}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}.tbl th,.tbl td{text-align:left;padding:8px 10px;border-top:1px solid var(--line)}.tbl th{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.05em;border-top:0}
+@media(max-width:720px){.tiles[style]{grid-template-columns:1fr 1fr!important}}
