@@ -19,8 +19,13 @@ const greet=()=>{const h=+fmt(new Date().toISOString(),{hour:'2-digit',hour12:fa
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',2800)}
 function safeUrl(u){try{const x=new URL(u);return x.protocol=='https:'?x.href:''}catch(e){return ''}}
 // ---- local capture (this device only) ----
-const loadCap=()=>{try{const a=JSON.parse(localStorage.getItem(LS)||'[]');return Array.isArray(a)?a:[]}catch(e){return []}};
-const saveCap=a=>localStorage.setItem(LS,JSON.stringify(a));
+const loadLocal=()=>{try{const a=JSON.parse(localStorage.getItem(LS)||'[]');return Array.isArray(a)?a:[]}catch(e){return []}};
+const saveLocal=a=>localStorage.setItem(LS,JSON.stringify(a));
+S.cap=[];S.capOK=false;
+const loadCap=()=>S.authed&&S.capOK?S.cap:loadLocal();
+const mapCap=c=>({id:String(c.id),type:c.type||'note',text:String(c.text||''),due:c.due?(/^\d{4}-\d\d-\d\d/.test(c.due)?c.due.slice(0,10):dkey(c.due)):'',done:!!c.done,at:c.created_at?+new Date(c.created_at):0});
+HOOKS.push(async soft=>{const r=await soft('/capture');if(r){S.cap=arr(r).map(mapCap);S.capOK=true}});
+async function capCall(p,m,b){try{await api(p,{method:m,body:b?JSON.stringify(b):undefined});await load();return true}catch(e){toast('Could not save to the server ('+(e.status||'offline')+'). Nothing was changed.');return false}}
 // ---- normalise ----
 const nm=x=>x?(typeof x=='object'?(x.name||x.email||''):String(x)):'';
 function mapMail(m){return{id:m.id,src:m.source||'gmail',from:m.from_name||(typeof m.from=='object'?nm(m.from):m.from)||'Unknown sender',subj:m.subject||'(no subject)',sum:m.body_summary||m.snippet||'',pri:m.priority=='high',imp:+m.importance||0,reasons:Array.isArray(m.importance_reasons)?m.importance_reasons.map(String):[],unread:!!m.unread,flag:!!m.flagged,cc:!!m.is_cc,replied:m.replied===true,thread:m.thread_id||'',at:m.received_at}}
@@ -42,7 +47,7 @@ async function load(){S.err='';try{
  S.drafts=arr(dr).filter(d=>!['approved','approved_held','declined'].includes(d.status)).map(d=>({id:d.id,subj:d.subject||'Draft',body:String(d.body||'').slice(0,200),type:d.type||''}));
  await Promise.all(HOOKS.map(h=>h(soft)));
  S.syncedAt=con.map(c=>c.last_sync).filter(Boolean).sort().pop()||null;S.loaded=true;S.online=true;
-}catch(e){if(e.status==401){S.authed=false;S.loaded=false}else{S.online=false;S.err='Cannot reach the server from this browser.'}}
+}catch(e){if(e.status==401){S.authed=false;S.loaded=false;S.capOK=false}else{S.online=false;S.err='Cannot reach the server from this browser.'}}
 
  const f=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#main')&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);if(!f)render()}
 // ---- derived ----
@@ -84,7 +89,7 @@ ${sec('Meetings today',mt.map(calItem),'No meetings today.')}
 ${sec('Decisions waiting',needsDecision().map(draftItem),'No drafts waiting.')}
 ${sec('What your staff have open',S.staff.slice(0,8).map(staffItem),'No open staff tasks.')}
 ${sec('Coming up this week',wk.slice(0,8).map(calItem),'Nothing else in the next 7 days.')}
-${sec('Your captured tasks (this device)',cap.slice(0,6).map(capItem),'None captured.')}`}
+${sec('Your captured tasks',cap.slice(0,6).map(capItem),'None captured.')}`}
 function answer(k){const p=prio().slice(0,3),mt=meetToday(),nd=needsDecision();const li=a=>'<ol>'+a.map(x=>'<li>'+x+'</li>').join('')+'</ol>';
  if(!S.authed)return 'I can only read data after you sign in. <button class="btn sm" data-act="login">Sign in</button>';
  if(k=='prio'){const T=top3();return T.length?'These are the top items by my fixed rules (meetings, due tasks, decisions, then priority mail):'+li(T.map(x=>`<b>${esc(x.t)}</b><br><span class="mut sm">${esc(x.why)}</span>`)):'Nothing is flagged right now.'}
@@ -94,8 +99,10 @@ function answer(k){const p=prio().slice(0,3),mt=meetToday(),nd=needsDecision();c
 function vArthur(){return `<h1>Ask Arthur</h1><p class="sub">Your assistant for the morning.</p><div class="notice"><b>Arthur is rule-based.</b> He reads the data on this page with fixed rules. He is not an AI model and cannot understand free text yet. He never sends anything.</div>${gate()}
 <div class="card arthur"><div class="row"><button class="btn alt" data-ask="prio">My priorities</button><button class="btn alt" data-ask="day">Prepare my day</button><button class="btn alt" data-ask="appr">Pending approvals</button><button class="btn alt" data-ask="meet">Prepare my meeting</button></div><div id="ans" aria-live="polite">${S.ans?`<div class="bubble">${S.ans}</div>`:'<div class="bubble mut">Choose a button above.</div>'}</div></div>`}
 function vFocus(){const T=top3();return `<h1>Focus</h1><p class="sub">Today’s top three. Everything else is hidden.</p>${gate()}<div class="focus">${T.length?T.map((x,i)=>`<div class="card"><div class="n">${i+1}</div><div><span class="pill">${esc(x.kind)}</span><h3 style="display:inline">${esc(x.t)}</h3><div class="why"><b>Why:</b> ${esc(x.why)}</div>${x.link?`<a class="sm" href="${esc(x.link)}" target="_blank" rel="noopener noreferrer" style="color:#0070a8">Open in Gmail ↗</a>`:''}</div></div>`).join(''):'<div class="card empty">Nothing to focus on right now. Use Quick capture to add a task.</div>'}</div><p class="mut sm">Ranking rules: overdue or due-today captured tasks, today’s meetings, pending decisions, then priority mail by LaunchRiot importance.</p>`}
-function vCapture(){const a=loadCap().sort((x,y)=>y.at-x.at);return `<h1>Quick capture</h1><p class="sub">Add a task, note or idea in seconds.</p><div class="notice">Stored on this device only (this browser). It does not sync to other devices or to the server yet.</div>${capForm()}<div class="card"><h2>Captured (${a.length})</h2>${a.length?a.map(capItem).join(''):'<div class="empty">Nothing captured yet.</div>'}</div>`}
-function capForm(){return `<form class="card" id="capform"><label>Type<select name="type"><option value="task">Task</option><option value="note">Note</option><option value="idea">Idea</option></select></label><label>What<textarea name="text" rows="3" maxlength="500" required></textarea></label><label>Due date (tasks, optional)<input type="date" name="due"></label><button class="btn">Save on this device</button></form>`}
+function vCapture(){const a=loadCap().sort((x,y)=>y.at-x.at);return `<h1>Quick capture</h1><p class="sub">Add a task, note or idea in seconds.</p><div class="notice">${capWhere()}</div>${capMigrate()}${capForm()}<div class="card"><h2>Captured (${a.length})</h2>${a.length?a.map(capItem).join(''):'<div class="empty">Nothing captured yet.</div>'}</div>`}
+const capWhere=()=>S.authed&&S.capOK?'Saved to your private workspace server, so it syncs across your devices.':'Not signed in: saved on this device only. Sign in to sync across devices.';
+const capMigrate=()=>{const n=S.authed&&S.capOK?loadLocal().length:0;return n?`<div class="notice">${n} item(s) were captured earlier on this device only. <button class="btn sm" data-act="capmigrate">Upload to my workspace</button></div>`:''};
+function capForm(){return `<form class="card" id="capform"><label>Type<select name="type"><option value="task">Task</option><option value="note">Note</option><option value="idea">Idea</option></select></label><label>What<textarea name="text" rows="3" maxlength="500" required></textarea></label><label>Due date (tasks, optional)<input type="date" name="due"></label><button class="btn">Save</button></form>`}
 function vConn(){return `<h1>Connections</h1><p class="sub">Read-only. Outbound sending is off.</p>${gate()}<div class="card">${S.conn.length?S.conn.map(c=>`<div class="item"><div class="t">${esc({google:'Google (Gmail & Calendar)',microsoft:'Microsoft (Outlook)',zoho:'Zoho'}[c.provider]||c.provider)} <span class="pill ${c.state=='connected'?'ok':'warn'}">${esc(({connected:'Connected',not_connected:'Not connected yet',not_configured:'Not set up yet',error:'Error'})[c.state]||c.state)}</span></div><div class="mut sm">Last sync: ${esc(ago(c.last_sync))}</div>${c.last_error?`<div class="why"><b>Error:</b> ${esc(c.last_error)}</div>`:''}</div>`).join(''):'<div class="empty">Sign in to see connection status.</div>'}</div>${S.authed?`<button class="btn alt" data-act="logout">Sign out</button>`:`<button class="btn" data-act="login">Sign in</button>`}`}
 const NAV=[['overview','Overview',vOverview],['brief','Morning brief',vBrief],['arthur','Ask Arthur',vArthur],['focus','Focus',vFocus],['capture','Capture',vCapture],['connections','Connections',vConn]];
 function render(){const t=(location.hash.replace(/^#\/?/,'').split('/')[0])||'overview',v=NAV.find(n=>n[0]==t)||NAV[0];
@@ -112,13 +119,15 @@ function login(note){if($('#lg'))return;const d=document.createElement('div');d.
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-act],[data-ask],[data-cap-del],#qc-fab');if(!b)return;
  if(b.id=='qc-fab'){qc();return}
  if(b.dataset.act=='login')login();
- if(b.dataset.act=='logout'){try{await api('/auth/logout',{method:'POST'})}catch(x){}Object.assign(S,{authed:false,loaded:false,mail:[],cal:[],staff:[],drafts:[],conn:[],user:null,ans:null});render()}
+ if(b.dataset.act=='logout'){try{await api('/auth/logout',{method:'POST'})}catch(x){}Object.assign(S,{cap:[],capOK:false,decisions:[],authed:false,loaded:false,mail:[],cal:[],staff:[],drafts:[],conn:[],user:null,ans:null});render()}
  if(b.dataset.ask){S.ans=answer(b.dataset.ask);render();const a=$('#ans');a&&a.scrollIntoView({block:'nearest'})}
- if(b.dataset.capDel){saveCap(loadCap().filter(x=>x.id!=b.dataset.capDel));render()}});
-document.addEventListener('change',e=>{const i=e.target.closest('[data-cap-done]');if(!i)return;const a=loadCap();const x=a.find(y=>y.id==i.dataset.capDone);if(x){x.done=i.checked;saveCap(a);render()}});
-function addCap(f){const text=f.text.value.trim();if(!text)return false;const a=loadCap();a.push({id:'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),type:f.type.value,text:text.slice(0,500),due:f.type.value=='task'?f.due.value:'',done:false,at:Date.now()});saveCap(a);return true}
-document.addEventListener('submit',e=>{if(e.target.id=='capform'){e.preventDefault();if(addCap(e.target)){const m=e.target.closest('.modal');if(m)m.remove();e.target.reset();toast('Saved on this device');render()}}});
-function qc(){if($('#qcm'))return;const d=document.createElement('div');d.className='modal';d.id='qcm';d.innerHTML=`<div class="box" role="dialog" aria-label="Quick capture"><h2>Quick capture</h2><p class="mut sm">Stored on this device only.</p>${capForm().replace('class="card"','')}<button class="btn alt" id="qx" style="margin-top:10px">Cancel</button></div>`;document.body.appendChild(d);d.querySelector('textarea').focus();d.querySelector('#qx').onclick=()=>d.remove();d.addEventListener('click',e=>{if(e.target==d)d.remove()})}
+ if(b.dataset.capDel){if(S.authed&&S.capOK){await capCall('/capture/'+encodeURIComponent(b.dataset.capDel),'DELETE')}else{saveLocal(loadLocal().filter(x=>x.id!=b.dataset.capDel));render()}}
+ if(b.dataset.act=='capmigrate'){const L=loadLocal();let ok=0;for(const x of L){try{await api('/capture',{method:'POST',body:JSON.stringify({type:x.type,text:x.text,due:x.due||undefined,done:x.done})});ok++}catch(e){break}}
+  if(ok==L.length){saveLocal([]);toast('Uploaded '+ok+' item(s)')}else toast('Uploaded '+ok+' of '+L.length+'; the rest stay on this device');await load()}});
+document.addEventListener('change',e=>{const i=e.target.closest('[data-cap-done]');if(!i)return;if(S.authed&&S.capOK){capCall('/capture/'+encodeURIComponent(i.dataset.capDone),'PUT',{done:i.checked});return}const a=loadLocal();const x=a.find(y=>y.id==i.dataset.capDone);if(x){x.done=i.checked;saveLocal(a);render()}});
+async function addCap(f){const text=f.text.value.trim();if(!text)return false;const type=f.type.value,due=type=='task'?f.due.value:'';if(S.authed&&S.capOK)return capCall('/capture','POST',{type,text:text.slice(0,500),due:due||undefined});const a=loadLocal();a.push({id:'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),type:f.type.value,text:text.slice(0,500),due:f.type.value=='task'?f.due.value:'',done:false,at:Date.now()});saveLocal(a);render();return true}
+document.addEventListener('submit',async e=>{if(e.target.id=='capform'){e.preventDefault();const fm=e.target,srv=S.authed&&S.capOK;if(await addCap(fm)){const m=fm.closest('.modal');if(m)m.remove();fm.reset();toast(srv?'Saved to your workspace (syncs across devices)':'Saved on this device')}}});
+function qc(){if($('#qcm'))return;const d=document.createElement('div');d.className='modal';d.id='qcm';d.innerHTML=`<div class="box" role="dialog" aria-label="Quick capture"><h2>Quick capture</h2><p class="mut sm">${capWhere()}</p>${capForm().replace('class="card"','')}<button class="btn alt" id="qx" style="margin-top:10px">Cancel</button></div>`;document.body.appendChild(d);d.querySelector('textarea').focus();d.querySelector('#qx').onclick=()=>d.remove();d.addEventListener('click',e=>{if(e.target==d)d.remove()})}
 document.addEventListener('keydown',e=>{if(e.key=='Escape'){document.querySelectorAll('.modal').forEach(m=>m.remove())}});
 addEventListener('hashchange',()=>{render();$('#main').focus({preventScroll:true});scrollTo(0,0)});
 function start(){render();(async()=>{try{const me=await api('/auth/me');S.user=me&&me.user&&me.user.email||''}catch(e){}await load();if(!S.authed&&S.online&&!sessionStorage.getItem('wn-asked')){sessionStorage.setItem('wn-asked','1');login()}})();}
